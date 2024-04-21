@@ -1,0 +1,401 @@
+from bs4 import BeautifulSoup
+import lxml
+import requests
+import copy
+from math import exp, pi, log10
+
+way_find = False
+while not way_find:
+    print('CDMS or file?')
+    way = input()
+    if way == 'CDMS':
+        way_find = True
+        site = 'https://cdms.astro.uni-koeln.de/classic/entries/'
+        requests.get(site)
+        pages = requests.get(site, allow_redirects=True)
+        soup = BeautifulSoup(pages.text, 'lxml')
+        names = soup.find_all('tr')[1:]
+        is_find = False
+        new_file = None
+        weight = 0
+        not_is_simple = False
+        while not is_find:
+            print('Is molecule not simple?')
+            if input() == 'Yes':
+                not_is_simple = True
+                print('Print code of molecule: ')
+                molecule = input()
+                for name in names:
+                    if str(name.find_all('td')[1].contents) == molecule:
+                        is_find = True
+                        new_file = 'https://cdms.astro.uni-koeln.de' + name.find_all('td')[4].find_all('a')[1]['href']
+                        weight = name.find_all('td')[0].string
+                        molecule = name.find_all('td')[1].contents
+                        break
+                    print(name.find_all('td')[1].contents)
+                if not is_find:
+                    print('Такой молекулы нет')
+
+                else:
+                    print('Молекула найдена')
+            else:
+                not_is_simple = False
+                print('Print molecule: ')
+
+                molecule = input()
+                for name in names:
+                    if (name.find_all('td')[1].contents[0]) == molecule:
+                        is_find = True
+                        new_file = 'https://cdms.astro.uni-koeln.de' + name.find_all('td')[4].find_all('a')[1]['href']
+                        weight = name.find_all('td')[0].string
+                        molecule = name.find_all('td')[1].contents[0]
+                        # print(weight)
+                        break
+
+                if not is_find:
+                    print('Такой молекулы нет')
+
+                else:
+                    print('Молекула найдена')
+        if not_is_simple:
+            str_mol = ''
+            find = True
+            for row in molecule:
+                row = str(row)
+                for char in row:
+
+                    if char == '<':
+                        find = False
+                    if char == '>':
+                        find = True
+
+                    if find and char != '<' and char != '>':
+                        str_mol = str_mol + str(char)
+            molecule = str_mol
+
+        Qfile = 'https://cdms.astro.uni-koeln.de/cgi-bin/cdmsinfo?file=e' + str(weight) + '.cat'
+        Q = requests.get(Qfile)
+        Qsoup = BeautifulSoup(Q.text, 'lxml')
+        Qnames = Qsoup.find_all('tr')[1:]
+        print('Print temperature: ')
+        T = input()
+        for name in Qnames:
+
+            if len(name.find_all('td')) > 1:
+
+                if str(name.find_all('td')[0].string) == '\xa0Q(' + T + ')':
+                    Q = str(name.find_all('td')[1].string)
+    elif way == 'file':
+        way_find = True
+        print('Enter molecule name:')
+        molecule = input()
+        print('Enter weight:')
+        weight = input()
+        print('Print temperature: ')
+        T = input()
+        print('Enter Q:')
+        Q = float(input())
+    else:
+        print('No such way in this programm')
+    
+print('Print max J: ')
+J = float(input())
+
+if way == 'CDMS':
+    getting_file = requests.get(new_file)
+
+    with open('file.txt', 'wb') as f:
+        f.write(getting_file.content)
+    
+with open(molecule + '.txt', 'w') as file:
+    with open('file.txt', 'r') as f:
+        # print(f.readlines())
+        table_origin = []
+        q_numbers = []
+        num_of_level = 1
+        for row in f.readlines():
+
+            row = str(row)
+            if float(row[31:41]) <= 800: # Надо будет уточнить как лучше сделать
+                table_origin.append(row)
+                q_numbers.append([row[55:67].rstrip(), row[67:80].rstrip()])
+        index = 0
+
+        table_with_qn = []
+        for row in table_origin:
+            if '-' in str(q_numbers[index][0]):
+                table_with_qn[-1][2] = str(int(table_with_qn[-1][2]) + int(row[41:45]))
+            else:
+                
+                table_with_qn.append([num_of_level, row[31:41], row[41:45], q_numbers[index][0], q_numbers[index][1]])
+                num_of_level += 1
+            index += 1
+        #for row in table_with_qn:
+            #print(row)
+        table = sorted(table_with_qn, key=lambda x: float(x[1]))
+
+        new_table = []
+        for row in copy.deepcopy(table):
+            if float(row[4][:2]) >J:
+                continue
+            if row[4][:2] == ' 0':
+                if len(new_table) == 0:
+
+                    new_table.append(row)
+                else:
+                    if row[1] != new_table[-1][1]:
+                        new_table.append(row)
+
+            else:
+
+                for new_row in copy.deepcopy(table):
+
+                    if new_row[3][0:2] == row[4][0:2] and row[1] != new_table[-1][1]:
+                        row[2] = new_row[2]
+                        new_table.append(row)
+
+                        break
+                else:
+                    if row[1] != new_table[-1][1]:
+                        row[2] = '-'
+                        new_table.append(row)
+            
+        
+
+        radioactive = []
+        index = 0
+        flag = True
+        with open('file.txt', 'r') as fi:
+            for row in fi.readlines():
+                for n_row in copy.deepcopy(new_table):
+                    
+                    if float(row[31:41]) == float(n_row[1]):
+                        if radioactive and flag and float(row[31:41]) == float(radioactive[-1][31:41]):
+                            radioactive[-1] = [radioactive[-1]]
+                            radioactive[-1].append(row)
+                            flag = False
+                            continue
+                        else:
+                            radioactive.append(row)
+                            flag = True
+
+        
+        radioactive = sorted(radioactive, key=lambda x: float(x[31:41]) if not isinstance(x,list) else float(x[0][31:41]))
+        
+
+
+        for index in range(len(new_table)):
+            if new_table[index][-1][:2] == ' 0':
+                new_table[index][2] = '-'
+            new_table[index][-2] = new_table[index][-1][0:2].lstrip()
+            new_table[index].pop()
+            new_table[index] = list(map(str, new_table[index]))
+            new_table[index][0] = str(index + 1)
+        
+        file.write('!MOLECULE' + '\n')
+        file.write(molecule + '\n')
+        file.write('!MOLECULAR WEIGHT' + '\n')
+        if way == 'CDMS':
+            weight = str(weight)[1:3] if weight[0] == '0' else str(weight)[:3]
+        file.write(weight + '\n')
+        file.write('!NUMBER OF ENERGY LEVELS' + '\n')
+        file.write(str(len(new_table)) + '\n')
+        file.write('!LEVEL + ENERGIES(cm^-1) + WEIGHT + J' + '\n')
+        
+        for row in new_table:
+            for index in range(len(row)):
+                if index == 0:
+                    row[index] = row[index].rjust(5)
+                if index == 1:
+                    row[index] = row[index].rjust(13)
+                if index == 2:
+                    row[index] = row[index].rjust(10)
+                if index == 3:
+                    row[index] = row[index].rjust(6)
+            
+            file.write(' '.join(row) + '\n')
+        file.write('!NUMBER OF RADIATIVE TRANSITIONS' + '\n')
+        
+        index = 1
+        new_row = ''
+        table_of_rows = []
+        is_multiple = False
+        i=0
+        for row in radioactive:
+            flag = True
+            if isinstance(row, list):
+                is_multiple = True
+            else:
+                is_multiple = False
+            for row2 in radioactive:
+                if row2 != row and flag:
+                    continue
+                if flag:
+                    flag = False
+                    continue
+                if is_multiple:
+                    if isinstance(row2, list) and row2[0][67:69] == row[0][55:57] and row2[0][70:72] == row[0][58:60]:
+                        I = float(row[0][22:30])
+                        gup = float(row[0][41:45])
+                        freq = float(row[0][:14]) / 1000
+                        energy = float(row[0][31:41])
+
+                        A = 10 ** I * freq ** 2 * float(Q) / gup / (exp(-energy * 1.44 / float(T)) - exp(
+                            -float(row2[0][31:41]) * 1.44 / float(T))) * 2.7964 * 10 ** (-16) * 1000000
+                        for line in new_table:
+                            if float(line[1]) == energy:
+                                low = line[0]
+                            if float(line[1]) == float(row2[0][31:41]):
+                                up = line[0]
+                        new_row += str(index).rjust(5) + str(up).rjust(6) + str(low).rjust(6) + str(
+                        format(A, '.4g')).rjust(13) + str(
+                        format(freq, '.7f')).rjust(15) + str(
+                        float(format(float(row[0][31:41]) * 1.44 + freq * 6.62607015 * 10e-34 / 1.380649 * 10e30,'.2f'))).rjust(9) + '\n'
+                        table_of_rows.append(new_row)
+                        index += 1
+                        new_row = ''
+                        break
+                    elif row2[67:69] == row[0][55:57] and row2[70:72] == row[0][58:60]:
+                        I = float(row[0][22:30])
+                        gup = float(row[0][41:45])
+                        freq = float(row[0][:14]) / 1000
+                        energy = float(row[0][31:41])
+
+                        A = 10 ** I * freq ** 2 * float(Q) / gup / (exp(-energy * 1.44 / float(T)) - exp(
+                            -float(row2[31:41]) * 1.44 / float(T))) * 2.7964 * 10 ** (-16) * 1000000
+                                
+                        for line in new_table:
+                            if float(line[1]) == energy:
+                                low = line[0]
+                            if float(line[1]) == float(row2[31:41]):
+                                up = line[0]
+                        new_row += str(index).rjust(5) + str(up).rjust(6) + str(low).rjust(6) + str(
+                        format(A, '.4g')).rjust(13) + str(
+                        format(freq, '.7f')).rjust(15) + str(
+                        float(format(float(row[0][31:41]) * 1.44 + freq * 6.62607015 * 10e-34 / 1.380649 * 10e30,'.2f'))).rjust(9) + '\n'
+                        table_of_rows.append(new_row)
+                        index += 1
+                        new_row = ''
+                        break
+                if row2[67:69] == row[55:57] and not is_multiple and row2[70:72] == row[58:60]:
+                    freq = float(row[:14]) / 1000
+                    energy = float(row[31:41])
+                    gup = float(row[41:45])
+                    I = float(row[22:30])
+                    try:
+                        A = 10 ** I * freq ** 2 * float(Q) / gup / (exp(-energy * 1.44 / float(T)) - exp(
+                            -float(row2[31:41]) * 1.44 / float(T))) * 2.7964 * 10 ** (-16) * 1000000
+                    except:
+                        print(I, freq, gup, (exp(-energy * 1.44 / float(T)) - exp(
+                            -float(row2[31:41]) * 1.44 / float(T))))
+                    for line in new_table:
+                        if float(line[1]) == energy:
+                            low = line[0]
+                        if float(line[1]) == float(row2[31:41]):
+                            up = line[0]
+                            
+                            
+                        
+                    new_row += str(index).rjust(5) + str(up).rjust(6) + str(low).rjust(6) + str(format(A, '.4g')).rjust(13) + str(format(freq, '.7f')).rjust(15) + str(
+                        float(format(float(row[31:41]) * 1.44 + freq * 6.62607015 * 10e-34 / 1.380649 * 10e30,'.2f'))).rjust(9) + '\n'
+                    table_of_rows.append(new_row)
+                    index += 1
+                    new_row = ''
+                    break
+                if row2[67:69] == row[55:57] and not is_multiple and len(row2)<72:
+                    freq = float(row[:14]) / 1000
+                    energy = float(row[31:41])
+                    gup = float(row[41:45])
+                    I = float(row[22:30])
+                    try:
+                        A = 10 ** I * freq ** 2 * float(Q) / gup / (exp(-energy * 1.44 / float(T)) - exp(
+                            -float(row2[31:41]) * 1.44 / float(T))) * 2.7964 * 10 ** (-16) * 1000000
+                    except:
+                        print(I, freq, gup, (exp(-energy * 1.44 / float(T)) - exp(
+                            -float(row2[31:41]) * 1.44 / float(T))))
+                    for line in new_table:
+                        if float(line[1]) == energy:
+                            low = line[0]
+                        if float(line[1]) == float(row2[31:41]):
+                            up = line[0]
+                            
+                            
+                        
+                    new_row += str(index).rjust(5) + str(up).rjust(6) + str(low).rjust(6) + str(format(A, '.4g')).rjust(13) + str(format(freq, '.7f')).rjust(15) + str(
+                        float(format(float(row[31:41]) * 1.44 + freq * 6.62607015 * 10e-34 / 1.380649 * 10e30,'.2f'))).rjust(9) + '\n'
+                    table_of_rows.append(new_row)
+                    index += 1
+                    new_row = ''
+                    break
+                    
+        
+        table_of_rows = sorted(table_of_rows, key = lambda x: x[8:11])
+        print(new_table)
+        for i in range(len(table_of_rows)):
+            table_of_rows[i] = str(i+1).rjust(5) + table_of_rows[i][5:]
+        file.write(str(index - 1) + '\n')
+        file.write('!TRANS + UP + LOW + EINSTEINA(s^-1) + FREQ(GHz) + E_u(K)' + '\n')
+        for row in table_of_rows:
+            file.write(row)
+        file.write('!NUMBER OF COLL PARTNERS\n')
+        file.write('1\n')
+        file.write('!COLLISIONS BETWEEN\n')
+        file.write('1 ' + molecule + "-H from A. M. Sobolev and V. S. Strel'nitskii (1982)\n")
+        constants = []
+        temperatures = [20.0,40.0,60.0,80.0,100.0,120.0,140.0,500.0]
+        print('Enter weight of first level: ')
+        weight_1 = int(input())
+        num = 1
+         
+        for up in range(2,len(new_table)+1):
+            
+            
+            for low in range(1,up):
+                constants.append([num,up,low])
+                
+                for temperature in temperatures:
+                    average_weight = 0
+                    sum_weight = 0
+                    exp_mas = 0
+                    
+                    for i in range(1,up):
+                        sigma = (float(new_table[up-1][1]) - float(new_table[i-1][1]))
+                        massey = -0.357/(temperature**0.5) * sigma 
+                        if i == 1:
+                            sum_weight += weight_1*exp(massey)
+                        else:
+                            sum_weight += float(new_table[i-1][2])*exp(massey)
+                        exp_mas += exp(massey)
+                    average_weight = sum_weight / exp_mas
+                    sigma = (float(new_table[up-1][1]) - float(new_table[low-1][1]))
+                    massey = -0.357/(temperature**0.5) * sigma 
+                    if low == 1:
+                        C = 1e-11*weight_1/average_weight*exp(massey)
+                    else:
+                        C = 1e-11*float(new_table[low-1][2])/average_weight*exp(massey)
+                    #if temperature == 10:
+                        
+                    constants[-1].append(C)
+                    
+                num += 1
+                
+                
+        file.write('!NUMBER OF COLL TRANS\n')
+        file.write(str(len(constants)) + '\n')
+        file.write('!NUMBER OF COLL TEMPS\n')
+        file.write(str(len(temperatures)) + '\n')
+        str_temp = ' '*14
+        for x in temperatures:
+            str_temp += str(float(x)).rjust(8)
+        file.write('!COLL TEMPS\n')
+        file.write(str_temp + '\n')
+        file.write('!TRANS+ UP+ LOW+ COLLRATES(cm^3 s^-1)\n')
+        for col in constants:
+            str_temp = ''
+            for x in range(3,len(col)):
+                
+                str_temp += str(format(col[x], '.4g')).rjust(12)
+                
+            file.write(str(col[0]).rjust(5) + str(col[1]).rjust(5) + str(col[2]).rjust(4)+'   ' + str_temp+'\n')
+
+        
